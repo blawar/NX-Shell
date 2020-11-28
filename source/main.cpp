@@ -188,9 +188,6 @@ namespace Services {
 	
 	int Init(void) {
 		// FS
-		devices[0] = *fsdevGetDeviceFileSystem("sdmc");
-		fs = &devices[0];
-
 		Config::Load();
 
 		socketInitializeDefault();
@@ -211,7 +208,7 @@ namespace Services {
 			return ret;
 		}
 
-		if (R_FAILED(ret = plInitialize(PlServiceType_User))) {
+		if (R_FAILED(ret = plInitialize())) {
 			Log::Error("plInitialize(PlServiceType_User) failed: 0x%x\n", ret);
 			return ret;
 		}

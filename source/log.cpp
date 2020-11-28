@@ -2,35 +2,21 @@
 
 #include "config.h"
 #include "fs.h"
+#include "file.h"
 
 namespace Log {
-    static FsFile log_file;
+    static std::shared_ptr<FS::file::Context> log_file;
     static s64 offset = 0;
     
     void Init(void) {
         if (!cfg.dev_options)
             return;
+
+		log_file = FS::file::open("sdmc:/switch/NX-Shell/debug.log", FS::file::Mode::W);
         
-        if (!FS::FileExists("/switch/NX-Shell/debug.log"))
-            fsFsCreateFile(fs, "/switch/NX-Shell/debug.log", 0, 0);
             
-        if (R_FAILED(fsFsOpenFile(fs, "/switch/NX-Shell/debug.log", (FsOpenMode_Read | FsOpenMode_Write | FsOpenMode_Append), &log_file)))
+        if (!log_file)
             return;
-            
-        s64 size = 0;
-        if (R_FAILED(fsFileGetSize(&log_file, &size)))
-            return;
-
-        unsigned char *buffer = new unsigned char[size];
-
-        u64 bytes_read = 0;
-        if (R_FAILED(fsFileRead(&log_file, offset, buffer, size, FsReadOption_None, &bytes_read))) {
-            delete[] buffer;
-            return;
-        }
-
-        delete[] buffer;
-        offset += bytes_read;
     }
     
     void Error(const char *data, ...) {
@@ -47,17 +33,20 @@ namespace Log {
         error_string.append(buf);
 
         std::printf("%s", error_string.c_str());
-        
-        if (R_FAILED(fsFileWrite(&log_file, offset, error_string.data(), error_string.length(), FsWriteOption_None)))
-            return;
 
-        offset += error_string.length();
+		if(log_file)
+		{
+			log_file->write((const u8*)error_string.data(), error_string.length());
+		}
     }
     
     void Exit(void) {
         if (!cfg.dev_options)
             return;
-        
-        fsFileClose(&log_file);
+		if(log_file)
+		{
+			log_file->close();
+			log_file = nullptr;
+		}
     }
 }

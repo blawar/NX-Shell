@@ -10,11 +10,15 @@
 #include "imgui_impl_opengl3.h"
 #include "popups.h"
 #include "windows.h"
+#include "directory.h"
+#include "uri.h"
 
 // Global var used across windows/popups
 MenuItem item;
 
 namespace GUI {
+	static Uri g_currentUri;
+
 	enum SDL_KEYS {
 		SDL_KEY_A, SDL_KEY_B, SDL_KEY_X, SDL_KEY_Y,
 		SDL_KEY_LSTICK, SDL_KEY_RSTICK,
@@ -27,15 +31,31 @@ namespace GUI {
 		SDL_KEY_SL_LEFT, SDL_KEY_SR_LEFT, SDL_KEY_SL_RIGHT, SDL_KEY_SR_RIGHT
 	};
 
+	static bool SetDirectory(const  Uri& uri)
+	{
+		g_currentUri = uri;
+		item.entries.resize(0);
+
+		auto d = FS::directory::open(uri);
+
+		if(!d)
+		{
+			return false;
+		}
+
+		item.entries = d->entries();
+
+		return true;
+	}
+
 	int RenderLoop(void) {
 		ImGuiIO& io = ImGui::GetIO(); (void)io;
 
 		item.state = MENU_STATE_FILEBROWSER;
 		item.selected = 0;
 		
-		Result ret = 0;
-		if (R_FAILED(ret = FS::GetDirList(cfg.cwd, item.entries)))
-			return ret;
+		if (!SetDirectory("sdmc:/"))
+			return -1;
 
 		item.checked.resize(item.entries.size());
 		FS::GetUsedStorageSpace(&item.used_storage);
@@ -61,7 +81,8 @@ namespace GUI {
 						if (item.state == MENU_STATE_FILEBROWSER) {
 							if (item.entries[item.selected].type == FsDirEntryType_Dir) {
 								if (item.entries.size() != 0) {
-									if (R_SUCCEEDED(FS::ChangeDirNext(item.entries[item.selected].name, item.entries))) {
+									SetDirectory(item.entries[item.selected].name);
+									if (SetDirectory(g_currentUri.join(item.entries[item.selected].name))) {
 										// Make a copy before resizing our vector.
 										if (item.checked_count > 1)
 											item.checked_copy = item.checked;
@@ -75,7 +96,8 @@ namespace GUI {
 					}
 					else if (button == SDL_KEY_B) {
 						if (item.state == MENU_STATE_FILEBROWSER) {
-							if (R_SUCCEEDED(FS::ChangeDirPrev(item.entries))) {
+							if(SetDirectory(g_currentUri.parent()))
+							{
 								// Make a copy before resizing our vector.
 								if (item.checked_count > 1)
 									item.checked_copy = item.checked;
@@ -99,8 +121,7 @@ namespace GUI {
 							}
 						}
 						else if (item.state == MENU_STATE_TEXTREADER) {
-							text_reader.buf_size = 0;
-							delete[] text_reader.buf;
+							text_reader.buffer.resize(0);
 							item.state = MENU_STATE_FILEBROWSER;
 						}
 						else if (item.state == MENU_STATE_SETTINGS)
@@ -116,7 +137,7 @@ namespace GUI {
 					}
 					else if (button == SDL_KEY_Y) {
 						if (item.state == MENU_STATE_FILEBROWSER) {
-							if ((!item.checked_cwd.empty()) && (item.checked_cwd.compare(cfg.cwd) != 0))
+							if (!item.checked_cwd.empty() && (item.checked_cwd != cfg.cwd))
 								GUI::ResetCheckbox();
 								
 							item.checked_cwd = cfg.cwd;

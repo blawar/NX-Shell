@@ -6,6 +6,8 @@
 #include "keyboard.h"
 #include "language.h"
 #include "popups.h"
+#include "directory.h"
+#include "file.h"
 
 namespace Popups {
 	static bool copy = false, move = false;
@@ -13,7 +15,7 @@ namespace Popups {
 		Result ret = 0;
 		std::vector<FsDirectoryEntry> entries;
 		
-		if (R_FAILED(ret = FS::GetDirList(item.checked_cwd.data(), entries)))
+		if (R_FAILED(ret = FS::GetDirList(item.checked_cwd, entries)))
 			return;
 		
 		for (long unsigned int i = 0; i < item.checked_copy.size(); i++) {
@@ -27,7 +29,15 @@ namespace Popups {
 			}
 		}
 
-		FS::GetDirList(cfg.cwd, item.entries);
+		auto d = FS::directory::open(cfg.cwd);
+		if(d)
+		{
+			item.entries = d->entries();
+		}
+		else
+		{
+			item.entries.resize(0);
+		}
 		GUI::ResetCheckbox();
 		entries.clear();
 	}
@@ -74,12 +84,9 @@ namespace Popups {
 			ImGui::Dummy(ImVec2(0.0f, 5.0f)); // Spacing
 			
 			if (ImGui::Button(strings[cfg.lang][Lang::OptionsNewFolder], ImVec2(200, 50))) {
-				std::string path = cfg.cwd;
-				path.append("/");
 				std::string name = Keyboard::GetText(strings[cfg.lang][Lang::OptionsFolderPrompt], strings[cfg.lang][Lang::OptionsNewFolder]);
-				path.append(name);
 				
-				if (R_SUCCEEDED(fsFsCreateDirectory(fs, path.c_str()))) {
+				if (FS::directory::create(cfg.cwd.join(name))) {
 					FS::GetDirList(cfg.cwd, item.entries);
 					GUI::ResetCheckbox();
 				}
@@ -91,12 +98,11 @@ namespace Popups {
 			ImGui::SameLine(0.0f, 15.0f);
 			
 			if (ImGui::Button(strings[cfg.lang][Lang::OptionsNewFile], ImVec2(200, 50))) {
-				std::string path = cfg.cwd;
-				path.append("/");
 				std::string name = Keyboard::GetText(strings[cfg.lang][Lang::OptionsFilePrompt], strings[cfg.lang][Lang::OptionsNewFile]);
-				path.append(name);
+
+				auto f = FS::file::open(cfg.cwd.join(name.c_str()), FS::file::Mode::W);
 				
-				if (R_SUCCEEDED(fsFsCreateFile(fs, path.c_str(), 0, 0))) {
+				if (f) {
 					FS::GetDirList(cfg.cwd, item.entries);
 					GUI::ResetCheckbox();
 				}

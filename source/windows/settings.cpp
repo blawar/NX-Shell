@@ -6,6 +6,7 @@
 #include "net.h"
 #include "popups.h"
 #include "windows.h"
+#include "directory.h"
 
 namespace Windows {
 	static bool update_popup = false, network_status = false, update_available = false;
@@ -35,7 +36,13 @@ namespace Windows {
 				for (int i = 0; i < max_sort; i++) {
 					if (ImGui::RadioButton(sort_options[i], &cfg.sort, i)) {
 						Config::Save(cfg);
-						FS::GetDirList(cfg.cwd, item.entries);
+
+						auto d = FS::directory::open(cfg.cwd);
+
+						if(d)
+						{
+							item.entries = d->entries();
+						}
 					}
 
 					if (i != (max_sort - 1))

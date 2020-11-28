@@ -8,6 +8,7 @@
 #include "fs.h"
 #include "log.h"
 #include "net.h"
+#include "file.h"
 
 namespace Net {
     static s64 offset = 0;
@@ -74,23 +75,22 @@ namespace Net {
         return tag_name;
     }
 
-    size_t WriteNROData(const char *ptr, size_t size, size_t nmemb, void *userdata) {
-        if (R_SUCCEEDED(fsFileWrite(reinterpret_cast<FsFile *>(userdata), offset, ptr, (size * nmemb), FsWriteOption_Flush)))
-            offset += (size * nmemb);
+    size_t WriteNROData(const char *ptr, size_t size, size_t nmemb, FS::file::Context* f) {
+		if(f)
+		{
+			f->write((const u8*)ptr, (size * nmemb));
+		}
+
+		offset += (size * nmemb);
             
         return (size * nmemb);
     }
     
     void GetLatestReleaseNRO(const std::string &tag) {
-        Result ret = 0;
-        FsFile file;
-        const char path[FS_MAX_PATH] = "/switch/NX-Shell/NX-Shell_UPDATE.nro";
+		auto file = FS::file::open("sdmc:/switch/NX-Shell/NX-Shell_UPDATE.nro", FS::file::Mode::W);
 
-        if (!FS::FileExists(path))
-            fsFsCreateFile(fs, path, 0, 0);
 
-        if (R_FAILED(ret = fsFsOpenFile(fs, path, FsOpenMode_Write | FsOpenMode_Append, &file))) {
-            Log::Error("fsFsOpenFile(%s) failed: 0x%x\n", path, ret);
+        if (!file || !file->isOpen()) {
             return;
         }
         
@@ -103,13 +103,12 @@ namespace Net {
             curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 0L);
             curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, Net::WriteNROData);
-            curl_easy_setopt(handle, CURLOPT_WRITEDATA, &file);
+            curl_easy_setopt(handle, CURLOPT_WRITEDATA, file.get());
             curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L);
             curl_easy_perform(handle);
             curl_easy_cleanup(handle);
         }
         
-        fsFileClose(&file);
         offset = 0;
         return;
     }

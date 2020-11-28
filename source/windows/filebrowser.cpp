@@ -5,6 +5,8 @@
 #include "imgui_internal.h"
 #include "log.h"
 #include "windows.h"
+#include "file.h"
+#include "uri.h"
 
 namespace Windows {
     void FileBrowserWindow(bool *focus, bool *first_item) {
@@ -18,7 +20,7 @@ namespace Windows {
             }
             
             // Display current working directory
-            ImGui::TextColored(ImVec4(1.00f, 1.00f, 1.00f, 1.00f), cfg.cwd);
+            ImGui::TextColored(ImVec4(1.00f, 1.00f, 1.00f, 1.00f), cfg.cwd.c_str());
             
             // Draw storage bar
             ImGui::Dummy(ImVec2(0.0f, 1.0f)); // Spacing
@@ -30,7 +32,7 @@ namespace Windows {
                 for (long unsigned int i = 0; i < item.entries.size(); i++) {
                     std::string filename = item.entries[i].name;
                     
-                    if ((item.checked.at(i)) && (!item.checked_cwd.compare(cfg.cwd)))
+                    if ((item.checked.at(i)) && (item.checked_cwd == cfg.cwd))
                         ImGui::Image(reinterpret_cast<ImTextureID>(check_icon.id), ImVec2(check_icon.width, check_icon.height));
                     else
                         ImGui::Image(reinterpret_cast<ImTextureID>(uncheck_icon.id), ImVec2(uncheck_icon.width, uncheck_icon.height));
@@ -54,42 +56,33 @@ namespace Windows {
                                 break;
                                 
                             case FileTypeImage:
-                                if ((std::snprintf(path, FS_MAX_PATH, "%s/%s", cfg.cwd, item.entries[item.selected].name)) > 0) {
-                                    Textures::LoadImageFile(path, item.textures);
+                                {
+                                    Textures::LoadImageFile(cfg.cwd.join(item.entries[item.selected].name), item.textures);
                                     item.state = MENU_STATE_IMAGEVIEWER;
                                 }
                                 break;
 
                             case FileTypeText:
-                                if ((std::snprintf(path, FS_MAX_PATH, "%s/%s", cfg.cwd, item.entries[item.selected].name)) > 0) {
-                                    Log::Exit();
+							{
+								auto uri = Uri(cfg.cwd).join(item.entries[item.selected].name);
 
-                                    FsFile file;
-                                    Result ret = 0;
-                                    if (R_FAILED(ret = fsFsOpenFile(fs, path, FsOpenMode_Read, &file)))
-                                        Log::Error("fsFsOpenFile(%s) failed: 0x%x\n", path, ret);
-                                    
-                                    s64 size = 0;
-                                    if (R_FAILED(ret = fsFileGetSize(&file, &size))) {
-                                        Log::Error("fsFileGetSize(%s) failed: 0x%x\n", path, ret);
-                                        fsFileClose(&file);
-                                    }
+								Log::Exit();
 
-                                    text_reader.buf = new char[size];
-                                    
-                                    u64 bytes_read = 0;
-                                    if (R_FAILED(ret = fsFileRead(&file, 0, text_reader.buf, static_cast<u64>(size), FsReadOption_None, &bytes_read))) {
-                                        Log::Error("fsFileRead(%s) failed: 0x%x\n", path, ret);
-                                        fsFileClose(&file);
-                                    }
+								text_reader.buffer.resize(0);
 
-                                    fsFileClose(&file);
-                                    Log::Init();
-                                    text_reader.buf_size = bytes_read;
-                                    item.state = MENU_STATE_TEXTREADER;
-                                }
-                                break;
-                            
+								auto file = FS::file::open(path, FS::file::Mode::R);
+
+								if(!file)
+									Log::Error("fsFsOpenFile(%s) failed\n", path);
+
+								file->read(text_reader.buffer);
+								file->close();
+
+								Log::Init();
+								item.state = MENU_STATE_TEXTREADER;
+
+								break;
+							}
                             default:
                                 break;
                         }

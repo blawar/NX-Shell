@@ -11,29 +11,22 @@
 #include "popups.h"
 
 namespace ArchiveHelper {
-    std::string ConstructPath(const char path[FS_MAX_PATH]) {
-        std::string new_path = cfg.cwd;
-        new_path.append("/");
-        new_path.append(std::filesystem::path(path).stem());
-        new_path.append("/");
-        return new_path;
+    Uri ConstructPath(const Uri& uri) {
+		return cfg.cwd.join(uri);
     }
     
-    std::string ConstructDirname(const char path[FS_MAX_PATH], char *dirname) {
-        std::string new_dirname = ArchiveHelper::ConstructPath(path);
-        new_dirname.append(std::filesystem::path(dirname).parent_path());
-        return new_dirname;
+    Uri ConstructDirname(const Uri& uri, char *dirname) {
+        return cfg.cwd.join(uri).join(std::filesystem::path(dirname).parent_path().c_str());
     }
     
-    std::string ConstructFilename(const char path[FS_MAX_PATH], char *filename) {
-        std::string new_filename = ArchiveHelper::ConstructPath(path);
-        new_filename.append(filename);
-        return new_filename;
+    Uri ConstructFilename(const Uri& uri, char *filename) {
+        return  cfg.cwd.join(uri).join(filename);
     }
     
     Result RecursiveMakeDir(const std::string &path) {
         Result ret = 0;
-        char buf[FS_MAX_PATH + 1];
+        /* TODO
+		char buf[FS_MAX_PATH + 1];
         char *p = nullptr;
         
         int length = std::snprintf(buf, sizeof(buf), path.c_str());
@@ -48,13 +41,14 @@ namespace ArchiveHelper {
             }
             
             ret = fsFsCreateDirectory(fs, buf);
-        }
+        }*/
         
         return ret;
     }
     
     Result ExtractFile(ZZIP_DIR *dir, const ZZIP_DIRENT &entry, const std::string &path) {
-        Result ret = 0;
+        /* TODO
+		Result ret = 0;
         ZZIP_FILE *src_handle = zzip_file_open(dir, entry.d_name, O_RDONLY);
         if (!src_handle) {
             Log::Error("zzip_file_open(%s) failed\n", path.c_str());
@@ -96,11 +90,12 @@ namespace ArchiveHelper {
         
         delete[] buf;
         fsFileClose(&dest_handle);
-        zzip_file_close(src_handle);
+        zzip_file_close(src_handle);*/
         return 0; 
     }
     
     void Extract(const char path[FS_MAX_PATH]) {
+		/* TODO
         ZZIP_DIR *dir;
         ZZIP_DIRENT entry;
         zzip_error_t error;
@@ -120,6 +115,7 @@ namespace ArchiveHelper {
         }
         
         zzip_dir_close(dir);
+		*/
     }
 }
 

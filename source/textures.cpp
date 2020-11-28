@@ -34,6 +34,7 @@
 #include "imgui.h"
 #include "log.h"
 #include "textures.h"
+#include "file.h"
 
 #define BYTES_PER_PIXEL 4
 #define MAX_IMAGE_BYTES (48 * 1024 * 1024)
@@ -108,19 +109,12 @@ namespace Textures {
 		ImageTypeOther
 	} ImageType;
 	
-	static Result ReadFile(const char path[FS_MAX_PATH], unsigned char **buffer, s64 *size) {
-		Result ret = 0;
-		FsFile file;
+	/*static Result ReadFile(const Uri& uri, std::vector<u8>& buffer) {
+		auto file = FS::file::open(uri, FS::file::Mode::R);
 		
-		if (R_FAILED(ret = fsFsOpenFile(fs, path, FsOpenMode_Read, &file))) {
-			Log::Error("fsFsOpenFile(%s) failed: 0x%x\n", path, ret);
-			return ret;
-		}
-		
-		if (R_FAILED(ret = fsFileGetSize(&file, size))) {
-			Log::Error("fsFileGetSize(%s) failed: 0x%x\n", path, ret);
-			fsFileClose(&file);
-			return ret;
+		if (!file) {
+			Log::Error("fsFsOpenFile(%s) failed\n", uri.c_str());
+			return -1;
 		}
 
 		*buffer = new unsigned char[*size];
@@ -140,7 +134,7 @@ namespace Textures {
 
 		fsFileClose(&file);
 		return 0;
-	}
+	}*/
 
 	static bool LoadImage(unsigned char *data, GLint format, Tex *texture, void (*free_func)(void *)) {
 		// Create a OpenGL texture identifier
@@ -190,7 +184,7 @@ namespace Textures {
 		return ret;
 	}
 	
-	static bool LoadImageBMP(unsigned char **data, s64 *size, Tex *texture) {
+	static bool LoadImageBMP(unsigned char *data, s64 *size, Tex *texture) {
 		bmp_bitmap_callback_vt bitmap_callbacks = {
 			BMP::bitmap_create,
 			BMP::bitmap_destroy,
@@ -202,7 +196,7 @@ namespace Textures {
 		bmp_image bmp;
 		bmp_create(&bmp, &bitmap_callbacks);
 		
-		code = bmp_analyse(&bmp, *size, *data);
+		code = bmp_analyse(&bmp, *size, data);
 		if (code != BMP_OK) {
 			bmp_finalise(&bmp);
 			return false;
@@ -229,7 +223,7 @@ namespace Textures {
 		return ret;
 	}
 
-	static bool LoadImageGIF(unsigned char **data, s64 *size, std::vector<Tex> &textures) {
+	static bool LoadImageGIF(unsigned char *data, s64 *size, std::vector<Tex> &textures) {
 		gif_bitmap_callback_vt bitmap_callbacks = {
 			GIF::bitmap_create,
 			GIF::bitmap_destroy,
@@ -245,7 +239,7 @@ namespace Textures {
 		gif_create(&gif, &bitmap_callbacks);
 		
 		do {
-			code = gif_initialise(&gif, *size, *data);
+			code = gif_initialise(&gif, *size, data);
 			if (code != GIF_OK && code != GIF_WORKING) {
 				Log::Error("gif_initialise failed: %d\n", code);
 				gif_finalise(&gif);
@@ -287,31 +281,31 @@ namespace Textures {
 		return ret;
 	}
 	
-	static bool LoadImageJPEG(unsigned char **data, s64 *size, Tex *texture) {
+	static bool LoadImageJPEG(unsigned char *data, s64 *size, Tex *texture) {
 		tjhandle jpeg = tjInitDecompress();
 		int jpegsubsamp = 0;
-		tjDecompressHeader2(jpeg, *data, *size, &texture->width, &texture->height, &jpegsubsamp);
+		tjDecompressHeader2(jpeg, data, *size, &texture->width, &texture->height, &jpegsubsamp);
 		unsigned char *buffer = new unsigned char[texture->width * texture->height * 3];
-		tjDecompress2(jpeg, *data, *size, buffer, texture->width, 0, texture->height, TJPF_RGB, TJFLAG_FASTDCT);
+		tjDecompress2(jpeg, data, *size, buffer, texture->width, 0, texture->height, TJPF_RGB, TJFLAG_FASTDCT);
 		bool ret = LoadImage(buffer, GL_RGB, texture, nullptr);
 		tjDestroy(jpeg);
 		delete[] buffer;
 		return ret;
 	}
 
-	static bool LoadImageOther(unsigned char **data, s64 *size, Tex *texture) {
-		unsigned char *image = stbi_load_from_memory(*data, *size, &texture->width, &texture->height, nullptr, STBI_rgb_alpha);
+	static bool LoadImageOther(unsigned char *data, s64 *size, Tex *texture) {
+		unsigned char *image = stbi_load_from_memory(data, *size, &texture->width, &texture->height, nullptr, STBI_rgb_alpha);
 		bool ret = Textures::LoadImage(image, GL_RGBA, texture, nullptr);
 		return ret;
 	}
 
-	static bool LoadImagePNG(unsigned char **data, s64 *size, Tex *texture) {
+	static bool LoadImagePNG(unsigned char *data, s64 *size, Tex *texture) {
 		bool ret = false;
 		png_image image;
 		std::memset(&image, 0, (sizeof image));
 		image.version = PNG_IMAGE_VERSION;
 
-		if (png_image_begin_read_from_memory(&image, *data, *size) != 0) {
+		if (png_image_begin_read_from_memory(&image, data, *size) != 0) {
 			png_bytep buffer;
 			image.format = PNG_FORMAT_RGBA;
 			buffer = new png_byte[PNG_IMAGE_SIZE(image)];
@@ -334,9 +328,9 @@ namespace Textures {
 		return ret;
 	}
 
-	static bool LoadImageWEBP(unsigned char **data, s64 *size, Tex *texture) {
-		*data = WebPDecodeRGBA(*data, *size, &texture->width, &texture->height);
-		bool ret = Textures::LoadImage(*data, GL_RGBA, texture, nullptr);
+	static bool LoadImageWEBP(unsigned char *data, s64 *size, Tex *texture) {
+		data = WebPDecodeRGBA(data, *size, &texture->width, &texture->height);
+		bool ret = Textures::LoadImage(data, GL_RGBA, texture, nullptr);
 		return ret;
 	}
 
@@ -357,47 +351,52 @@ namespace Textures {
 		return ImageTypeOther;
 	}
 
-	bool LoadImageFile(const char path[FS_MAX_PATH], std::vector<Tex> &textures) {
+	bool LoadImageFile(const Uri& uri, std::vector<Tex> &textures) {
 		bool ret = false;
-		unsigned char *data = nullptr;
+		std::vector<u8> data;
 		s64 size = 0;
 
-		if (R_FAILED(Textures::ReadFile(path, &data, &size))) {
-			delete[] data;
+		auto file = FS::file::open(uri, FS::file::Mode::R);
+
+		if (!file) {
 			return ret;
 		}
+
+		file->read(data);
+
+		size = data.size();
 
 		// Resize to 1 initially. If the file is a GIF it will be resized accordingly.
 		textures.resize(1);
 
-		ImageType type = GetImageType(path);
+		ImageType type = GetImageType(uri.basename());
 		switch(type) {
 			case ImageTypeBMP:
-				ret = Textures::LoadImageBMP(&data, &size, &textures[0]);
+				ret = Textures::LoadImageBMP(&data.front(), &size, &textures[0]);
 				break;
 
 			case ImageTypeGIF:
-				ret = Textures::LoadImageGIF(&data, &size, textures);
+				ret = Textures::LoadImageGIF(&data.front(), &size, textures);
 				break;
 			
 			case ImageTypeJPEG:
-				ret = Textures::LoadImageJPEG(&data, &size, &textures[0]);
+				ret = Textures::LoadImageJPEG(&data.front(), &size, &textures[0]);
 				break;
 
 			case ImageTypePNG:
-				ret = Textures::LoadImagePNG(&data, &size, &textures[0]);
+				ret = Textures::LoadImagePNG(&data.front(), &size, &textures[0]);
 				break;
 
 			case ImageTypeWEBP:
-				ret = Textures::LoadImageWEBP(&data, &size, &textures[0]);
+				ret = Textures::LoadImageWEBP(&data.front(), &size, &textures[0]);
 				break;
 
 			default:
-				ret = Textures::LoadImageOther(&data, &size, &textures[0]);
+				ret = Textures::LoadImageOther(&data.front(), &size, &textures[0]);
 				break;
 		}
 
-		delete[] data;
+
 		return ret;
 	}
 	

@@ -7,6 +7,8 @@
 #include <switch.h>
 
 #include "textures.h"
+#include <vector>
+#include "uri.h"
 
 enum MENU_STATES {
     MENU_STATE_FILEBROWSER,
@@ -25,7 +27,7 @@ typedef struct {
     std::vector<FsDirectoryEntry> entries;
     std::vector<bool> checked;
     std::vector<bool> checked_copy;
-    std::string checked_cwd;
+    Uri checked_cwd;
     int checked_count = 0;
     s64 used_storage = 0;
     s64 total_storage = 0;
@@ -34,8 +36,7 @@ typedef struct {
 } MenuItem;
 
 typedef struct {
-    char *buf;
-    size_t buf_size;
+	std::vector<u8> buffer;
 } TextReader;
 
 extern SDL_Window *window;

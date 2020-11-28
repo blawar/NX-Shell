@@ -5,6 +5,8 @@
 #include "config.h"
 #include "fs.h"
 #include "log.h"
+#include "file.h"
+#include "directory.h"
 
 #define CONFIG_VERSION 2
 
@@ -19,26 +21,19 @@ namespace Config {
         Result ret = 0;
         char *buf = new char[buf_size];
         u64 len = std::snprintf(buf, buf_size, config_file, CONFIG_VERSION, config.sort, config.lang, config.dev_options, config.image_filename, config.cwd);
+
         
-        // Delete and re-create the file, we don't care about the return value here.
-        fsFsDeleteFile(fs, "/switch/NX-Shell/config.json");
-        fsFsCreateFile(fs, "/switch/NX-Shell/config.json", len, 0);
-        
-        FsFile file;
-        if (R_FAILED(ret = fsFsOpenFile(fs, "/switch/NX-Shell/config.json", FsOpenMode_Write, &file))) {
-            Log::Error("fsFsOpenFile(/switch/NX-Shell/config.json) failed: 0x%x\n", ret);
+        auto file = FS::file::open("sdmc:/switch/NX-Shell/config.json", FS::file::Mode::W);
+        if (!file) {
+            Log::Error("fsFsOpenFile(/switch/NX-Shell/config.json) failed\n");
             delete[] buf;
             return ret;
         }
+
+		file->write((const u8*)buf, len);
+		file->flush();
+		file->close();
         
-        if (R_FAILED(ret = fsFileWrite(&file, 0, buf, len, FsWriteOption_Flush))) {
-            Log::Error("fsFileWrite(/switch/NX-Shell/config.json) failed: 0x%x\n", ret);
-            delete[] buf;
-            fsFileClose(&file);
-            return ret;
-        }
-        
-        fsFileClose(&file);
         delete[] buf;
         return 0;
     }
@@ -48,45 +43,44 @@ namespace Config {
         config->lang = 1;
         config->dev_options = false;
         config->image_filename = false;
-        std::strcpy(config->cwd, "/");
+		config->cwd = "sdmc:/";
     }
     
     int Load(void) {
-        Result ret = 0;
-        
-        if (!FS::DirExists("/switch/"))
-            fsFsCreateDirectory(fs, "/switch");
-        if (!FS::DirExists("/switch/NX-Shell/"))
-            fsFsCreateDirectory(fs, "/switch/NX-Shell");
+
+        if (!FS::directory::exists("sdmc:/switch/"))
+            FS::directory::create("sdmc:/switch");
+
+        if (!FS::directory::exists("sdmc:/switch/NX-Shell/"))
+			FS::directory::create("sdmc:/switch/NX-Shell");
             
-        if (!FS::FileExists("/switch/NX-Shell/config.json")) {
+        if (!FS::file::exists("sdmc:/switch/NX-Shell/config.json")) {
             Config::SetDefault(&cfg);
             return Config::Save(cfg);
         }
         
-        FsFile file;
-        if (R_FAILED(ret = fsFsOpenFile(fs, "/switch/NX-Shell/config.json", FsOpenMode_Read, &file)))
-            return ret;
+		auto file = FS::file::open("sdmc:/switch/NX-Shell/config.json", FS::file::Mode::R);
+        if (!file)
+            return -1;
         
-        s64 size = 0;
-        if (R_FAILED(ret = fsFileGetSize(&file, &size))) {
-            fsFileClose(&file);
-            return ret;
-        }
+        s64 size = file->size();
 
-        char *buf =  new char[size + 1];
-        if (R_FAILED(ret = fsFileRead(&file, 0, buf, static_cast<u64>(size) + 1, FsReadOption_None, nullptr))) {
-            delete[] buf;
-            fsFileClose(&file);
-            return ret;
+		if(!size)
+		{
+			return -1;
+		}
+
+		std::vector<u8> buf;
+        if (!file->read(buf, size)) {
+            return -1;
         }
         
-        fsFileClose(&file);
+        file->close();
+		buf.push_back(0);
         
         json_t *root;
         json_error_t error;
-        root = json_loads(buf, 0, &error);
-        delete[] buf;
+        root = json_loads((const char*)&buf.front(), 0, &error);
         
         if (!root) {
             printf("error: on line %d: %s\n", error.line, error.text);
@@ -109,14 +103,14 @@ namespace Config {
         cfg.image_filename = json_integer_value(image_filename);
         
         json_t *last_dir = json_object_get(root, "last_dir");
-        std::strcpy(cfg.cwd, json_string_value(last_dir));
+		cfg.cwd = json_string_value(last_dir);
         
-        if (!FS::DirExists(cfg.cwd))
-            std::strcpy(cfg.cwd, "/");
+		if(!FS::directory::exists(cfg.cwd))
+			cfg.cwd = "sdmc:/";
             
         // Delete config file if config file is updated. This will rarely happen.
         if (config_version_holder < CONFIG_VERSION) {
-            fsFsDeleteFile(fs, "/switch/NX-Shell/config.json");
+            FS::file::unlink("sdmc:/switch/NX-Shell/config.json");
             Config::SetDefault(&cfg);
             return Config::Save(cfg);
         }

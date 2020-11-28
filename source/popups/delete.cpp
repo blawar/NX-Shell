@@ -5,6 +5,8 @@
 #include "language.h"
 #include "log.h"
 #include "popups.h"
+#include "file.h"
+#include "directory.h"
 
 namespace Popups {
     void DeletePopup(void) {
@@ -12,7 +14,7 @@ namespace Popups {
 		
 		if (ImGui::BeginPopupModal(strings[cfg.lang][Lang::OptionsDelete], nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 			ImGui::Text(strings[cfg.lang][Lang::DeleteMessage]);
-			if ((item.checked_count > 1) && (!item.checked_cwd.compare(cfg.cwd))) {
+			if ((item.checked_count > 1) && (item.checked_cwd == cfg.cwd)) {
 				ImGui::Text(strings[cfg.lang][Lang::DeleteMultiplePrompt]);
 				ImGui::Dummy(ImVec2(0.0f, 5.0f)); // Spacing
 				ImGui::BeginChild("Scrolling", ImVec2(0, 100));
@@ -33,11 +35,25 @@ namespace Popups {
 				Result ret = 0;
 				Log::Exit();
 
-				if ((item.checked_count > 1) && (!item.checked_cwd.compare(cfg.cwd))) {
+				if ((item.checked_count > 1) && (item.checked_cwd == cfg.cwd)) {
 					for (long unsigned int i = 0; i < item.checked.size(); i++) {
 						if (item.checked.at(i)) {
-							if (R_FAILED(ret = FS::Delete(&item.entries[i]))) {
-								FS::GetDirList(cfg.cwd, item.entries);
+							if(item.entries[i].type == FsDirEntryType_Dir)
+							{
+								FS::directory::unlink(cfg.cwd.join(item.entries[i].name));
+							}
+							else
+							{
+								FS::file::unlink(cfg.cwd.join(item.entries[i].name));
+							}
+
+							if (true) {
+								auto d = FS::directory::open(cfg.cwd);
+
+								if(d)
+								{
+									item.entries = d->entries();
+								}
 								GUI::ResetCheckbox();
 								break;
 							}
@@ -45,10 +61,25 @@ namespace Popups {
 					}
 				}
 				else
-					ret = FS::Delete(&item.entries[item.selected]);
+				{
+					if(item.entries[item.selected].type == FsDirEntryType_Dir)
+					{
+						FS::directory::unlink(cfg.cwd.join(item.entries[item.selected].name));
+					}
+					else
+					{
+						FS::file::unlink(cfg.cwd.join(item.entries[item.selected].name));
+					}
+					ret = 0;
+				}
 				
 				if (R_SUCCEEDED(ret)) {
-					FS::GetDirList(cfg.cwd, item.entries);
+					auto d = FS::directory::open(cfg.cwd);
+
+					if(d)
+					{
+						item.entries = d->entries();
+					}
 					GUI::ResetCheckbox();
 				}
 

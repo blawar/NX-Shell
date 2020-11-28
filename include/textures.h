@@ -4,6 +4,7 @@
 #include <glad/glad.h>
 #include <string>
 #include <vector>
+#include "uri.h"
 
 #define NUM_FILE_ICONS 5
 
@@ -17,7 +18,7 @@ typedef struct {
 extern Tex folder_icon, file_icons[NUM_FILE_ICONS], check_icon, uncheck_icon;
 
 namespace Textures {
-    bool LoadImageFile(const char path[FS_MAX_PATH], std::vector<Tex> &textures);
+    bool LoadImageFile(const Uri& uri, std::vector<Tex> &textures);
     void Free(Tex *texture);
     void Init(void);
     void Exit(void);
